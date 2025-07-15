@@ -9,6 +9,14 @@ import {
 	Typography,
 	Tooltip,
 	tooltipClasses,
+	Paper,
+	Table,
+	TableBody,
+	tableCellClasses,
+	TableCell,
+	TableContainer,
+	TableHead,
+	TableRow
 } from "@mui/material";
 import OpenInFullRoundedIcon from "@mui/icons-material/OpenInFullRounded";
 import CloseIcon from "@mui/icons-material/Close";
@@ -31,6 +39,24 @@ const CustomAutocomplete = lazy(() =>
 	import("../../../../components/Inputs/CustomAutocomplete.jsx")
 );
 const GridIndex = lazy(() => import("../../../../components/GridIndex"));
+
+const StyledTableCell = styled(TableCell)(({ theme }) => ({
+	[`&.${tableCellClasses.head}`]: {
+		backgroundColor: "#376a7d",
+		color: theme.palette.headerWhite.main,
+		border: "1px solid #fff",
+		textAlign: "center"
+	},
+	[`&.${tableCellClasses.body}`]: {
+		border: "1px solid lightgray",
+	},
+}));
+
+const StyledTableRow = styled(TableRow)(({ theme }) => ({
+	"&:nth-of-type(odd)": {
+		backgroundColor: theme.palette.action.hover,
+	},
+}));
 
 const HtmlTooltip = styled(({ className, ...props }) => (
 	<Tooltip {...props} classes={{ popper: className }} />
@@ -102,6 +128,7 @@ const GraphOptions = [
 	{ value: "GeoLocation", label: "GeoLocation" },
 	{ value: "AdmissionCategory", label: "Admission Category" },
 	{ value: "Datewise Statistics", label: "Datewise Statistics" },
+	{ value: "AdmissionReport", label: "Admission Report" },
 ];
 
 const ChartOptions = [
@@ -151,6 +178,14 @@ const standardColors = [
 	"rgb(3, 169, 244)",
 ];
 
+const AdmissionReportSubHeaderObj = [
+	{ label: "TI" },
+	{ label: "TA" },
+	{ label: "TV" },
+	{ label: "TR" },
+	{ label: "TNR" },
+];
+
 const DEFAULT_CHART = "horizontalbar";
 const DEFAULT_SELECTEDGRAPH = "Institute";
 const DEFAULT_MONTH = new Date().getMonth() + 1;
@@ -174,9 +209,11 @@ const AdmissionPage = () => {
 	const [schoolColorsArray, setSchoolColorsArray] = useState([]);
 	const [isTableView, setIsTableView] = useState(true);
 	const [instituteList, setInstituteList] = useState([]);
+	const [fullNameInstituteList, setFullNameInstituteList] = useState([]);
 	const [selectedInstitute, setSelectedInstitute] = useState(null);
 	const [allCountryList, setAllCountryList] = useState([]);
 	const [countryList, setCountryList] = useState([]);
+	const [programList, setProgramList] = useState([]);
 	const [stateList, setstateList] = useState([]);
 	const [cityList, setCityList] = useState([]);
 	const [selectedCountry, setSlectedCountry] = useState(null);
@@ -185,7 +222,10 @@ const AdmissionPage = () => {
 	const [selectedDate, setSelectedDate] = useState(new Date());
 	const [isGroupColumnTable, setIsGroupColumntable] = useState(false);
 	const [data, setData] = useState([]);
+	const [programId, setProgramId] = useState(null);
 	const [detailsRows, setDetailsRows] = useState([]);
+	const [admissionCategoryList, setAdmissionCategoryList] = useState([]);
+	const [admissionReportRow, setAdmissionReportRow] = useState([]);
 	const [isDetails, setIsDetails] = useState(false);
 	const [isAdmissionRowClick, setIsAdmissionRowClick] = useState(false);
 	const { setAlertMessage, setAlertOpen } = useAlert();
@@ -350,9 +390,25 @@ const AdmissionPage = () => {
 	}, [selectedGraph]);
 
 	useEffect(() => {
+		if (selectedGraph == "AdmissionReport") {
+			setSelectedInstitute(fullNameInstituteList[0].value);
+			getProgramData(fullNameInstituteList[0].value);
+			getAdmissionReportData(fullNameInstituteList[0].value)
+		}
+	}, [selectedGraph, selectedAcademicYear, selectedInstitute, programId]);
+
+	useEffect(() => {
 		if (Object.keys(chartData).length > 0) generatePieChartDataset();
 		else setPieChartData([]);
 	}, [chartData]);
+
+	const getSubHeader = () => {
+		let AdmissionReportSubHeader = [];
+		for (let i = 0; i < admissionCategoryList?.length; i++) {
+			AdmissionReportSubHeader.push(...AdmissionReportSubHeaderObj)
+		}
+		return AdmissionReportSubHeader;
+	};
 
 	const getInstituteList = () => {
 		axios
@@ -363,10 +419,74 @@ const AdmissionPage = () => {
 						return { label: obj.school_name_short, value: obj.school_id };
 					})
 				);
+				setFullNameInstituteList(
+					res.data.data.map((obj) => {
+						return { label: obj.school_name, value: obj.school_id };
+					})
+				);
 			})
 			.catch((err) => {
 				console.log(err);
 			});
+	};
+
+	const getProgramData = async (schoolId) => {
+		try {
+			const res = await axios.get(
+				`/api/otherFeeDetails/getProgramsDetails?schoolId=${schoolId}`
+			);
+			if (res.status == 200 || res.status == 201) {
+				const programList = res?.data?.data.map((el) => ({
+					label: el.programName,
+					value: el.programId
+				}));
+				setProgramList(programList)
+			}
+		} catch (error) {
+			console.error(error);
+		}
+	};
+
+	const getAdmissionReportData = async (schoolId) => {
+		try {
+			const params = new URLSearchParams();
+			const keys = {
+				"acYearId": selectedAcademicYear,
+				"schoolId": schoolId,
+				"programId": programId
+			};
+			Object.entries(keys).forEach(([key, value]) => {
+				if (value != null) {
+					params.append(key, value);
+				}
+			});
+			const res = await axios.get(`api/admissionCategoryReport/getAdmissionCategoryCompleteReport?${params}`);
+			if (res.status == 200 || res.status == 201) {
+				const list = res.data.data;
+				const filterCategory = [...new Set(list.map((li) => li.fee_admission_category_type))];
+				setAdmissionCategoryList(filterCategory);
+				const newList = list.map((ele) => ({
+					"branch": ele.program_specialization_short_name,
+					[`${ele.fee_admission_category_type}-intake`]: ele.intake || 0,
+					[`${ele.fee_admission_category_type}-admitted`]: ele.admitted || 0,
+					[`${ele.fee_admission_category_type}-vacant`]: ele.vacant || 0,
+					[`${ele.fee_admission_category_type}-reported`]: ele.reportedStudent || 0,
+					[`${ele.fee_admission_category_type}-notReported`]: ele.notReportedStudent || 0
+				}));
+				let newArray = [];
+				const uniqueBranch = [...new Set(newList.map(nl => nl.branch))];
+				uniqueBranch.forEach(ub => {
+					const branchWiseList = newList.filter((li) => li.branch == ub);
+					const mergedObj = branchWiseList.reduce((acc, curr) => {
+						return { ...acc, ...curr };
+					}, {});
+					newArray.push(mergedObj)
+					setAdmissionReportRow(newArray);
+				})
+			}
+		} catch (error) {
+			console.log(error)
+		}
 	};
 
 	const getCountry = () => {
@@ -2705,6 +2825,71 @@ const AdmissionPage = () => {
 		setPieChartData(data);
 	};
 
+	const AdmissionReportComp = () => (
+		<Paper elevation={2} sx={{ marginBottom: "10px" }}>
+			<Box p={1}><Typography color="primary" variant="subtitle2">TI-TOTAL INTAKE / TA-TOTAL ADMITTED / TV-TOTAL VACANT / TR-TOTAL REPORTED / TNR-TOTAL NOT-REPORTED</Typography></Box>
+			<TableContainer>
+				<Table size="small" aria-label="table">
+					<TableHead>
+						<StyledTableRow>
+							<StyledTableCell>Branch</StyledTableCell>
+							{admissionCategoryList.length > 0 && admissionCategoryList.map((li, idd) => (
+								<StyledTableCell colSpan={5} key={idd}>
+									{li}
+								</StyledTableCell>
+							))}
+							<StyledTableCell>Total</StyledTableCell>
+						</StyledTableRow>
+						<StyledTableRow>
+							<StyledTableCell>
+							</StyledTableCell>
+							{getSubHeader()?.map((column, id) => (
+								<StyledTableCell
+									key={`${id}-${new Date()}`}
+									align={column.align}
+									style={{ top: 57, minWidth: column.minWidth }}
+								>
+									{column.label}
+								</StyledTableCell>
+							))}
+							<StyledTableCell>Total</StyledTableCell>
+						</StyledTableRow>
+					</TableHead>
+					<TableBody>
+						{admissionReportRow.map((row, index) => {
+							return (
+								<StyledTableRow hover key={index}>
+									<StyledTableCell>
+										{row.branch}
+									</StyledTableCell>
+									{admissionCategoryList.map(al => (
+										<>
+											<StyledTableCell>
+												{row[`${al}-intake`] || 0}
+											</StyledTableCell>
+											<StyledTableCell>
+												{row[`${al}-admitted`] || 0}
+											</StyledTableCell>
+											<StyledTableCell>
+												{row[`${al}-vacant`] || 0}
+											</StyledTableCell>
+											<StyledTableCell>
+												{row[`${al}-reported`] || 0}
+											</StyledTableCell>
+											<StyledTableCell>
+												{row[`${al}-notReported`] || 0}
+											</StyledTableCell>
+										</>
+									))}
+								</StyledTableRow>
+							);
+						})}
+					</TableBody>
+				</Table>
+			</TableContainer>
+		</Paper>
+	);
+
 	return (
 		<Box
 			sx={{
@@ -2806,17 +2991,31 @@ const AdmissionPage = () => {
 								{(selectedGraph === "Programme" ||
 									selectedGraph === "Gender" ||
 									selectedGraph === "GeoLocation" ||
-									selectedGraph === "Datewise Statistics") && (
-										<Grid item xs={12} md={1}>
+									selectedGraph === "Datewise Statistics" ||
+									selectedGraph == "AdmissionReport") && (
+										<Grid item xs={12} md={selectedGraph !== "AdmissionReport" ? 1 : 4}>
 											<CustomAutocomplete
 												name="Institute"
 												value={selectedInstitute}
 												label="Institute"
-												handleChangeAdvance={(name, newValue) => setSelectedInstitute(newValue)}
-												options={instituteList || []}
+												handleChangeAdvance={(name, newValue) => { setSelectedInstitute(newValue); getProgramData(newValue) }}
+												options={selectedGraph !== "AdmissionReport" ? instituteList : fullNameInstituteList}
+												required={selectedGraph !== "AdmissionReport" ? false : true}
 											/>
 										</Grid>
 									)}
+
+								{(selectedGraph == "AdmissionReport") && (
+									<Grid item xs={12} md={2}>
+										<CustomAutocomplete
+											name="programId"
+											value={programId}
+											label="Program"
+											handleChangeAdvance={(name, newValue) => setProgramId(newValue)}
+											options={programList}
+										/>
+									</Grid>
+								)}
 
 								{selectedGraph === "Day Wise" && (
 									<>
@@ -2840,7 +3039,7 @@ const AdmissionPage = () => {
 										</Grid>
 									</>
 								)}
-								<Grid item xs={12} md={2}>
+								{selectedGraph !== "AdmissionReport" && <Grid item xs={12} md={2}>
 									<CustomAutocomplete
 										name="chart"
 										value={selectedChart}
@@ -2848,8 +3047,8 @@ const AdmissionPage = () => {
 										handleChangeAdvance={(name, newValue) => setSelectedChart(newValue)}
 										options={ChartOptions || []}
 									/>
-								</Grid>
-								<Grid item xs={12} md={3}>
+								</Grid>}
+								{selectedGraph !== "AdmissionReport" && <Grid item xs={12} md={3}>
 									<FormGroup>
 										<Box>
 											<Stack direction="row" spacing={1} alignItems="center">
@@ -2868,7 +3067,7 @@ const AdmissionPage = () => {
 											</Stack>
 										</Box>
 									</FormGroup>
-								</Grid>
+								</Grid>}
 							</Grid>
 						</Grid>
 					</Grid>
@@ -2883,7 +3082,7 @@ const AdmissionPage = () => {
 									item
 									xs={12}
 									md={12}
-									lg={isGroupColumnTable ? [...new Set(data.map((item) => item.fee_admission_category_short_name))].length > 2 ? 12 : 8 : (tableColumns.length <= 4 && !isDetails) ? 8 : 12}
+									lg={isGroupColumnTable ? [...new Set(data.map((item) => item.fee_admission_category_short_name))].length > 2 ? 12 : 8 : (tableColumns.length <= 4 && !isDetails && selectedGraph !== "AdmissionReport") ? 8 : 12}
 									pt={1}
 									sx={{
 										position: "absolute", width: "100%",
@@ -2909,7 +3108,7 @@ const AdmissionPage = () => {
 									}}
 								>
 									{isGroupColumnTable ? <GroupedColumnTable data={data} /> :
-										!isDetails ? <GridIndex
+										!isDetails && selectedGraph !== "AdmissionReport" ? <GridIndex
 											rows={tableRows}
 											columns={tableColumns}
 											getRowId={(row) => row.id}
@@ -2924,7 +3123,7 @@ const AdmissionPage = () => {
 											loading={loading}
 											columnVisibilityModel={columnVisibilityModel}
 											setColumnVisibilityModel={setColumnVisibilityModel}
-										/> :
+										/> : selectedGraph !== "AdmissionReport" ?
 											<GridIndex
 												rows={detailsRows}
 												columns={detailsColumns}
@@ -2940,7 +3139,7 @@ const AdmissionPage = () => {
 												loading={loading}
 												columnVisibilityModel={columnVisibilityModel}
 												setColumnVisibilityModel={setColumnVisibilityModel}
-											/>
+											/> : AdmissionReportComp()
 									}
 								</Grid>
 							) : (
