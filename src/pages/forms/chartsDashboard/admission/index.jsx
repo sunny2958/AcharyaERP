@@ -49,13 +49,14 @@ const StyledTableCell = styled(TableCell)(({ theme }) => ({
 	},
 	[`&.${tableCellClasses.body}`]: {
 		border: "1px solid lightgray",
+		textAlign: "center"
 	},
 }));
 
 const StyledTableRow = styled(TableRow)(({ theme }) => ({
-	"&:nth-of-type(odd)": {
-		backgroundColor: theme.palette.action.hover,
-	},
+	// "&:nth-of-type(odd)": {
+	// 	backgroundColor: theme.palette.action.hover,
+	// },
 }));
 
 const HtmlTooltip = styled(({ className, ...props }) => (
@@ -225,11 +226,16 @@ const AdmissionPage = () => {
 	const [programId, setProgramId] = useState(null);
 	const [detailsRows, setDetailsRows] = useState([]);
 	const [admissionCategoryList, setAdmissionCategoryList] = useState([]);
+	const [feeCategoryAllData, setFeeCategoryAllData] = useState([]);
 	const [admissionReportRow, setAdmissionReportRow] = useState([]);
 	const [isDetails, setIsDetails] = useState(false);
 	const [isAdmissionRowClick, setIsAdmissionRowClick] = useState(false);
 	const { setAlertMessage, setAlertOpen } = useAlert();
-	const [columnVisibilityModel, setColumnVisibilityModel] = useState({});
+	const [columnVisibilityModel, setColumnVisibilityModel] = useState({
+		usn:false,
+		ac_year:false,
+		school_name_short:false
+	});
 
 	useEffect(() => {
 		isDetails ? setCrumbs([
@@ -239,7 +245,6 @@ const AdmissionPage = () => {
 	}, [selectedGraph, isDetails]);
 
 	useEffect(() => {
-		getInstituteList();
 		getSchoolColors();
 		getAcademicYearList();
 		getCountry();
@@ -381,6 +386,7 @@ const AdmissionPage = () => {
 	]);
 
 	useEffect(() => {
+		getInstituteList(selectedGraph);
 		setSelectedAcademicYear(
 			academicYears.length > 0 ? academicYears[0].value : ""
 		);
@@ -391,11 +397,15 @@ const AdmissionPage = () => {
 
 	useEffect(() => {
 		if (selectedGraph == "AdmissionReport") {
-			setSelectedInstitute(fullNameInstituteList[0].value);
-			getProgramData(fullNameInstituteList[0].value);
-			getAdmissionReportData(fullNameInstituteList[0].value)
+			getProgramData(selectedInstitute);
 		}
-	}, [selectedGraph, selectedAcademicYear, selectedInstitute, programId]);
+	}, [selectedGraph, selectedInstitute]);
+
+	useEffect(() => {
+		if (selectedGraph == "AdmissionReport" && selectedInstitute) {
+			getAdmissionReportData(programId)
+		}
+	}, [selectedGraph,selectedInstitute,programId]);
 
 	useEffect(() => {
 		if (Object.keys(chartData).length > 0) generatePieChartDataset();
@@ -407,13 +417,15 @@ const AdmissionPage = () => {
 		for (let i = 0; i < admissionCategoryList?.length; i++) {
 			AdmissionReportSubHeader.push(...AdmissionReportSubHeaderObj)
 		}
+		AdmissionReportSubHeader = [...AdmissionReportSubHeader];
 		return AdmissionReportSubHeader;
 	};
 
-	const getInstituteList = () => {
+	const getInstituteList = (selectedGraph=DEFAULT_SELECTEDGRAPH) => {
 		axios
 			.get("/api/institute/school")
 			.then((res) => {
+				setSelectedInstitute(res.data.data[0]?.school_id);
 				setInstituteList(
 					res.data.data.map((obj) => {
 						return { label: obj.school_name_short, value: obj.school_id };
@@ -430,7 +442,7 @@ const AdmissionPage = () => {
 			});
 	};
 
-	const getProgramData = async (schoolId) => {
+	const getProgramData = async (schoolId = fullNameInstituteList[0].value) => {
 		try {
 			const res = await axios.get(
 				`/api/otherFeeDetails/getProgramsDetails?schoolId=${schoolId}`
@@ -440,20 +452,23 @@ const AdmissionPage = () => {
 					label: el.programName,
 					value: el.programId
 				}));
-				setProgramList(programList)
+				setProgramList(programList);
+				setProgramId(programList[0].value);
+				getAdmissionReportData(programList[0].value)
 			}
 		} catch (error) {
 			console.error(error);
 		}
 	};
 
-	const getAdmissionReportData = async (schoolId) => {
+	const getAdmissionReportData = async (programIdValue) => {
 		try {
+			setAdmissionReportRow([]);
 			const params = new URLSearchParams();
 			const keys = {
 				"acYearId": selectedAcademicYear,
-				"schoolId": schoolId,
-				"programId": programId
+				"schoolId": selectedInstitute,
+				"programId": programIdValue
 			};
 			Object.entries(keys).forEach(([key, value]) => {
 				if (value != null) {
@@ -463,26 +478,55 @@ const AdmissionPage = () => {
 			const res = await axios.get(`api/admissionCategoryReport/getAdmissionCategoryCompleteReport?${params}`);
 			if (res.status == 200 || res.status == 201) {
 				const list = res.data.data;
+				const uniqueBranch = [...new Set(list.map(nl => nl.program_specialization_short_name))];
+				setFeeCategoryAllData(list);
 				const filterCategory = [...new Set(list.map((li) => li.fee_admission_category_type))];
 				setAdmissionCategoryList(filterCategory);
 				const newList = list.map((ele) => ({
 					"branch": ele.program_specialization_short_name,
+					"category":ele.fee_admission_category_type,
 					[`${ele.fee_admission_category_type}-intake`]: ele.intake || 0,
 					[`${ele.fee_admission_category_type}-admitted`]: ele.admitted || 0,
 					[`${ele.fee_admission_category_type}-vacant`]: ele.vacant || 0,
 					[`${ele.fee_admission_category_type}-reported`]: ele.reportedStudent || 0,
-					[`${ele.fee_admission_category_type}-notReported`]: ele.notReportedStudent || 0
+					[`${ele.fee_admission_category_type}-notReported`]: ele.notReportedStudent || 0,
 				}));
+
 				let newArray = [];
-				const uniqueBranch = [...new Set(newList.map(nl => nl.branch))];
 				uniqueBranch.forEach(ub => {
 					const branchWiseList = newList.filter((li) => li.branch == ub);
 					const mergedObj = branchWiseList.reduce((acc, curr) => {
 						return { ...acc, ...curr };
 					}, {});
 					newArray.push(mergedObj)
-					setAdmissionReportRow(newArray);
-				})
+				});
+
+				const updatedArray = newArray.map((obj) => {
+					const totalAdmitted = Object.keys(obj)
+						.filter((key) => key.includes("admitted"))
+						.reduce((sum, key) => sum + obj[key], 0);
+					return {
+						...obj,
+						totalAdmitted,
+					};
+				});
+
+				const grandTotalObj = updatedArray.reduce((acc, curr) => {
+					for (const key in curr) {
+						if (typeof curr[key] === 'number') {
+							acc[key] = (acc[key] || 0) + curr[key];
+						}
+					}
+					return acc;
+				}, {});
+
+				let grandTotalList = {
+					"branch": "Grand Total",
+					...grandTotalObj,
+					"type": "total"
+				};
+				const updatedList = [...updatedArray,grandTotalList];
+				setAdmissionReportRow(updatedList);
 			}
 		} catch (error) {
 			console.log(error)
@@ -622,6 +666,94 @@ const AdmissionPage = () => {
 			headerName: "City",
 			flex: 1,
 			headerClassName: "header-bg",
+		},
+	];
+
+	const admissionStudentReportColumns = [
+		{
+			field: "auid",
+			headerName: "Auid",
+			flex: 1,
+			headerClassName: "header-bg",
+		},
+		{
+			field: "student_name",
+			headerName: "Student Name",
+			headerClassName: "header-bg",
+			flex: 1,
+			valueGetter: (value, row) => (row.student_name?.split(" ").map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))?.join(" ")
+		},
+		{
+			field: "usn",
+			headerName: "USN",
+			flex: 1,
+			headerClassName: "header-bg",
+		},
+		{
+			field: "date_of_admission",
+			headerName: "DOA",
+			flex: 1,
+			headerClassName: "header-bg",
+			valueGetter: (value, row) => (row.date_of_admission ? moment(row.date_of_admission).format("DD-MM-YYYY"):"")
+		},
+		{
+			field: "fee_template_name",
+			headerName: "Fee Template",
+			flex: 1,
+			headerClassName: "header-bg",
+		},
+		{
+			field: "fee_admission_category_short_name",
+			headerName: "Admission Category",
+			flex: 1,
+			headerClassName: "header-bg",
+		},
+		{
+			field: "ac_year",
+			headerName: "Academic Year",
+			flex: 1,
+			headerClassName: "header-bg",
+		},
+		{
+			field: "school_name_short",
+			headerName: "Institute",
+			flex: 1,
+			headerClassName: "header-bg",
+		},
+		{
+			field: "program_specialization_short_name",
+			headerName: "Program & Specilization",
+			flex: 1,
+			headerClassName: "header-bg",
+			valueGetter: (value, row) => (row.program_specialization_short_name && row.program_short_name ? `${row.program_short_name}-${row.program_specialization_short_name}` :"")
+		},
+		{
+			field: "stateName",
+			headerName: "State",
+			flex: 1,
+			headerClassName: "header-bg",
+		},
+		{
+			field: "counselorName",
+			headerName: "Counselor Name",
+			flex: 1,
+			headerClassName: "header-bg",
+			valueGetter: (value, row) => (row.counselorName ? row.counselorName?.split(" ").map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())?.join(" "): row.counselor_name ?
+			row.counselor_name?.split(" ").map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())?.join(" ") : "")
+		},
+		{
+			field: "reporting_date",
+			headerName: "Reported Date",
+			flex: 1,
+			headerClassName: "header-bg",
+			valueGetter: (value, row) => (row.reporting_date ? moment(row.reporting_date).format("DD-MM-YYYY") : "")
+		},
+		{
+			field: "reportedBy",
+			headerName: "Reported By",
+			flex: 1,
+			headerClassName: "header-bg",
+			valueGetter: (value, row) => (row.reporting_date  ? row.reportedBy?.split(" ").map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())?.join(" ") : "")
 		},
 	];
 
@@ -2825,23 +2957,25 @@ const AdmissionPage = () => {
 		setPieChartData(data);
 	};
 
-	const AdmissionReportComp = () => (
+
+	const AdmissionReportComponent = () => (
 		<Paper elevation={2} sx={{ marginBottom: "10px" }}>
 			<Box p={1}><Typography color="primary" variant="subtitle2">TI-TOTAL INTAKE / TA-TOTAL ADMITTED / TV-TOTAL VACANT / TR-TOTAL REPORTED / TNR-TOTAL NOT-REPORTED</Typography></Box>
 			<TableContainer>
 				<Table size="small" aria-label="table">
 					<TableHead>
 						<StyledTableRow>
-							<StyledTableCell>Branch</StyledTableCell>
+							<StyledTableCell></StyledTableCell>
 							{admissionCategoryList.length > 0 && admissionCategoryList.map((li, idd) => (
 								<StyledTableCell colSpan={5} key={idd}>
 									{li}
 								</StyledTableCell>
 							))}
-							<StyledTableCell>Total</StyledTableCell>
+							<StyledTableCell></StyledTableCell>
 						</StyledTableRow>
 						<StyledTableRow>
 							<StyledTableCell>
+								Branch
 							</StyledTableCell>
 							{getSubHeader()?.map((column, id) => (
 								<StyledTableCell
@@ -2852,7 +2986,7 @@ const AdmissionPage = () => {
 									{column.label}
 								</StyledTableCell>
 							))}
-							<StyledTableCell>Total</StyledTableCell>
+							<StyledTableCell >Admitted Total</StyledTableCell>
 						</StyledTableRow>
 					</TableHead>
 					<TableBody>
@@ -2860,27 +2994,32 @@ const AdmissionPage = () => {
 							return (
 								<StyledTableRow hover key={index}>
 									<StyledTableCell>
-										{row.branch}
+										{row.type == "total" ? <Typography variant="subtitle2" sx={{fontSize:"13px"}}>{row.branch}</Typography> :  row.branch}
 									</StyledTableCell>
-									{admissionCategoryList.map(al => (
+									{admissionCategoryList.map((al) => (
 										<>
-											<StyledTableCell>
-												{row[`${al}-intake`] || 0}
+											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#efebe9"}}>
+												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-intake`] || 0}</Typography> : row[`${al}-intake`] || 0}
 											</StyledTableCell>
-											<StyledTableCell>
-												{row[`${al}-admitted`] || 0}
+											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#f5f5f0"}}>
+												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-admitted`] || 0}</Typography> : row[`${al}-admitted`] || 0}
 											</StyledTableCell>
-											<StyledTableCell>
-												{row[`${al}-vacant`] || 0}
+											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#fffde7"}}>
+												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-vacant`] || 0}</Typography> : row[`${al}-vacant`] || 0}
 											</StyledTableCell>
-											<StyledTableCell>
-												{row[`${al}-reported`] || 0}
+											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#e6ffe6", color: row.type == "total" ? "#000": "blue", cursor: row[`${al}-reported`] == 0 ? "auto" : "pointer" }}>
+												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-reported`] || 0}</Typography> :  row[`${al}-reported`] == 0 ? <Typography>{row[`${al}-reported`] || 0}</Typography> :
+													<Typography onClick={() => getStudentDetail(row, al, "tr")}>{row[`${al}-reported`] || 0}</Typography>}
 											</StyledTableCell>
-											<StyledTableCell>
-												{row[`${al}-notReported`] || 0}
+											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#ffebee", color: row.type == "total" ? "#000" : "blue", cursor: row[`${al}-notReported`] == 0 ? "auto" : "pointer" }}>
+												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-notReported`] || 0}</Typography> :  row[`${al}-notReported`] == 0 ? <Typography>{row[`${al}-notReported`] || 0}</Typography> :
+													<Typography onClick={() => getStudentDetail(row, al, "tnr")}>{row[`${al}-notReported`] || 0}</Typography>}
 											</StyledTableCell>
 										</>
 									))}
+									<StyledTableCell style={{textAlign:"center"}}>
+										<Typography variant="subtitle2">{row.totalAdmitted}</Typography>
+									</StyledTableCell>
 								</StyledTableRow>
 							);
 						})}
@@ -2889,6 +3028,70 @@ const AdmissionPage = () => {
 			</TableContainer>
 		</Paper>
 	);
+
+	const AdmissionStudentReport = () => (
+		<GridIndex
+			rows={detailsRows}
+			columns={admissionStudentReportColumns}
+			loading={loading}
+			columnVisibilityModel={columnVisibilityModel}
+			setColumnVisibilityModel={setColumnVisibilityModel}
+		/>
+	);
+
+	const getStudentDetail = async(obj,feeCategory,type)=> {	
+			const selectedData = feeCategoryAllData.find((ob=>ob.program_specialization_short_name == obj.branch && ob.fee_admission_category_type == feeCategory && ob.schoolId == selectedInstitute));
+			const {acYearId,schoolId,program_id,fee_admission_category_id,program_specialization_id} = selectedData;
+			const params = new URLSearchParams();
+			const keys = {
+				"acYearId": acYearId,
+				"schoolId": schoolId,
+				"programId": program_id,
+				"feeAdmissionCategoryId": fee_admission_category_id,
+				"programSpecializationId": program_specialization_id,
+			};
+			Object.entries(keys).forEach(([key, value]) => {
+				if (value != null) {
+					params.append(key, value);
+				}
+			});
+		try {
+			if (type == "tr") {
+				const res = await axios.get(`/api/admissionCategoryReport/getReportingStudentData?${params}`);
+				if (res.status == 200 || res.status == 201) {
+					if(res.data.data.length > 0){
+						setIsDetails(true);
+						setDetailsRows(res.data.data.map((li, index) => ({ ...li, id: index + 1 })))
+					}else {
+						setIsDetails(false);
+							setAlertMessage({
+								severity: "error",
+								message: "No Data Found!!",
+							});
+							setAlertOpen(true);
+					};	
+				}
+			} else {
+				const res = await axios.get(`/api/admissionCategoryReport/getNotReportingStudentData?${params}`);
+				if (res.status == 200 || res.status == 201) {
+					if (res.data.data.length > 0) {
+						setIsDetails(true);
+						setDetailsRows(res.data.data.map((li, index) => ({ ...li, id: index + 1 })))
+					} else {
+						setIsDetails(false);
+						setAlertMessage({
+							severity: "error",
+							message: "No Data Found!!",
+						});
+						setAlertOpen(true);
+					};
+				}
+			}
+		} catch (error) {
+			setIsDetails(false)
+			console.log(error)
+		}
+	};
 
 	return (
 		<Box
@@ -2998,9 +3201,9 @@ const AdmissionPage = () => {
 												name="Institute"
 												value={selectedInstitute}
 												label="Institute"
-												handleChangeAdvance={(name, newValue) => { setSelectedInstitute(newValue); getProgramData(newValue) }}
+												handleChangeAdvance={(name, newValue) => { setSelectedInstitute(newValue); getProgramData(newValue)}}
 												options={selectedGraph !== "AdmissionReport" ? instituteList : fullNameInstituteList}
-												required={selectedGraph !== "AdmissionReport" ? false : true}
+												required
 											/>
 										</Grid>
 									)}
@@ -3011,8 +3214,9 @@ const AdmissionPage = () => {
 											name="programId"
 											value={programId}
 											label="Program"
-											handleChangeAdvance={(name, newValue) => setProgramId(newValue)}
+											handleChangeAdvance={(name, newValue) => {setProgramId(newValue);getAdmissionReportData(newValue)}}
 											options={programList}
+											required
 										/>
 									</Grid>
 								)}
@@ -3139,7 +3343,7 @@ const AdmissionPage = () => {
 												loading={loading}
 												columnVisibilityModel={columnVisibilityModel}
 												setColumnVisibilityModel={setColumnVisibilityModel}
-											/> : AdmissionReportComp()
+											/> : selectedGraph == "AdmissionReport" && !isDetails ? AdmissionReportComponent() : AdmissionStudentReport()
 									}
 								</Grid>
 							) : (
