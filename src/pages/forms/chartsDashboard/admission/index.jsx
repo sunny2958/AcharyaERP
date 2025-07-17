@@ -3007,12 +3007,12 @@ const AdmissionPage = () => {
 											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#fffde7"}}>
 												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-vacant`] || 0}</Typography> : row[`${al}-vacant`] || 0}
 											</StyledTableCell>
-											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#e6ffe6", color: row.type == "total" ? "#000": "blue", cursor: row[`${al}-reported`] == 0 ? "auto" : "pointer" }}>
-												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-reported`] || 0}</Typography> :  row[`${al}-reported`] == 0 ? <Typography>{row[`${al}-reported`] || 0}</Typography> :
+											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#e6ffe6", color: row.type == "total" ? "#000": "blue", cursor: row[`${al}-reported`] == 0 || row[`${al}-reported`] == null || row.type == "total" ? "auto" : "pointer" }}>
+												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-reported`] || 0}</Typography> :  row[`${al}-reported`] == 0 || row[`${al}-reported`] == null ? <Typography>{row[`${al}-reported`] || 0}</Typography> :
 													<Typography onClick={() => getStudentDetail(row, al, "tr")}>{row[`${al}-reported`] || 0}</Typography>}
 											</StyledTableCell>
-											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#ffebee", color: row.type == "total" ? "#000" : "blue", cursor: row[`${al}-notReported`] == 0 ? "auto" : "pointer" }}>
-												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-notReported`] || 0}</Typography> :  row[`${al}-notReported`] == 0 ? <Typography>{row[`${al}-notReported`] || 0}</Typography> :
+											<StyledTableCell style={{backgroundColor: row.type == "total" ? "#fff" : "#ffebee", color: row.type == "total" ? "#000" : "blue", cursor: row[`${al}-notReported`] == 0 || row[`${al}-notReported`] == null || row.type == "total" ? "auto" : "pointer" }}>
+												{row.type == "total" ? <Typography variant="subtitle2">{row[`${al}-notReported`] || 0}</Typography> :  row[`${al}-notReported`] == 0 || row[`${al}-notReported`] == null ? <Typography>{row[`${al}-notReported`] || 0}</Typography> :
 													<Typography onClick={() => getStudentDetail(row, al, "tnr")}>{row[`${al}-notReported`] || 0}</Typography>}
 											</StyledTableCell>
 										</>
